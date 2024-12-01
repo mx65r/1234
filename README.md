@@ -2,10 +2,10 @@ import pygame
 import math
 import sys
 import os
-import time
-from RealtimeSTT import AudioToTextRecorder
 import assist
+import time
 import tools
+from RealtimeSTT import AudioToTextRecorder
 
 
 class AppCircle:
@@ -58,7 +58,7 @@ def create_circles(screen_size):
 
 def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
     blur_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-    blur_surface.fill((0, 0, 0, 128))
+    blur_surface.fill((0, 0, 0, 128))  # Semi-transparent black for blur effect
     screen.blit(blur_surface, (0, 0))
 
     ring_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
@@ -66,42 +66,57 @@ def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
     outer_radius = screen.get_width() // 2
     inner_radius = outer_radius - blue_ring_thickness
 
-    for i in range(outer_radius, inner_radius, -1):
+    for i in range(outer_radius, inner_radius, -5):  # Reduce steps for better performance
         alpha = int(128 * (i - inner_radius) / blue_ring_thickness)
         pygame.draw.circle(ring_surface, (173, 216, 230, alpha), center, i)
 
     screen.blit(ring_surface, (0, 0))
 
     font = pygame.font.Font(None, 36)
-    text_surface = font.render(text, True, (255, 255, 255))
-    text_rect = text_surface.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
-    screen.blit(text_surface, text_rect)
+    margin = screen.get_width() // 4
+    words = text.split()
+    lines = []
+    current_line = []
+    for word in words:
+        test_line = current_line + [word]
+        test_surface = font.render(' '.join(test_line), True, (255, 255, 255))
+        if test_surface.get_width() <= screen.get_width() - 2 * margin:
+            current_line = test_line
+        else:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    lines.append(' '.join(current_line))
+
+    total_height = sum(font.render(line, True, (255, 255, 255)).get_height() for line in lines)
+    start_y = (screen.get_height() - total_height) // 2
+    for i, line in enumerate(lines):
+        text_surface = font.render(line, True, (255, 255, 255))
+        text_rect = text_surface.get_rect(center=(screen.get_width() // 2, start_y + i * 40))
+        screen.blit(text_surface, text_rect)
 
     pygame.display.update()
 
 
-def run_voice_assistant(recorder, screen, background, circles):
-    current_text = recorder.text()
-    if not current_text:
-        return None
+def run_voice_assistant(recorder, screen, background, circles, last_check):
+    current_time = pygame.time.get_ticks()
+    if current_time - last_check < 100:  # Check every 100ms
+        return last_check
 
-    if "jarvis" in current_text.lower() or "alexa" in current_text.lower():
-        print(f"User: {current_text}")
+    current_text = recorder.text()
+    if current_text and ("jarvis" in current_text.lower() or "alexa" in current_text.lower()):
         apply_blur_ring_and_text(screen, current_text)
         recorder.stop()
-        
+
         response = assist.ask_question_memory(current_text)
-        print(response)
         speech = response.split("#")[0]
-
         apply_blur_ring_and_text(screen, response)
-        done = assist.TTS(speech)
-        if len(response.split("#")) > 1:
-            command = response.split("#")[1]
-            tools.parse_command(command)
 
+        assist.TTS(speech)
+        if len(response.split("#")) > 1:
+            tools.parse_command(response.split("#")[1])
         recorder.start()
-    return None
+
+    return current_time
 
 
 def run_home_screen(screen):
@@ -110,15 +125,20 @@ def run_home_screen(screen):
     background = pygame.transform.scale(background, screen_size)
 
     circles = create_circles(screen_size)
-    running = True
-
     recorder = AudioToTextRecorder(
-        spinner=False, model="tiny.en", language="en",
-        post_speech_silence_duration=0.1, silero_sensitivity=0.4
+        spinner=False,
+        model="tiny.en",
+        language="en",
+        post_speech_silence_duration=0.1,
+        silero_sensitivity=0.4,
     )
     recorder.start()
 
+    running = True
+    last_check = 0
+
     while running:
+        updated = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 recorder.stop()
@@ -132,14 +152,15 @@ def run_home_screen(screen):
                         try:
                             mod = __import__(app_module_name, fromlist=[''])
                             mod.run(screen)
+                            updated = True
                         except ImportError:
                             print(f"Failed to load app module: {app_module_name}")
 
         screen.blit(background, (0, 0))
         for circle in circles:
             circle.draw(screen)
+        last_check = run_voice_assistant(recorder, screen, background, circles, last_check)
 
-        run_voice_assistant(recorder, screen, background, circles)
         pygame.display.flip()
         pygame.time.delay(1)
 
@@ -148,3 +169,4 @@ if __name__ == '__main__':
     pygame.init()
     screen = pygame.display.set_mode((1080, 1080))
     run_home_screen(screen)
+
