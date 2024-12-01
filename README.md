@@ -4,9 +4,7 @@ import sys
 import os
 import assist
 import time
-import tools
 from RealtimeSTT import AudioToTextRecorder
-
 
 class AppCircle:
     def __init__(self, center, app_index, screen_size):
@@ -40,7 +38,6 @@ class AppCircle:
     def is_clicked(self, pos):
         return math.hypot(pos[0] - self.center[0], pos[1] - self.center[1]) <= self.radius
 
-
 def create_circles(screen_size):
     circles = []
     num_circles = 8
@@ -56,45 +53,76 @@ def create_circles(screen_size):
     return circles
 
 
+def create_text_surfaces(response, font, screen_width, margin):
+    words = response.split()
+    lines = []
+    current_line = []
+    for word in words:
+        test_line = current_line + [word]
+        test_surface = font.render(' '.join(test_line), True, (255, 255, 255))
+        if test_surface.get_width() <= screen_width - 2 * margin:
+            current_line = test_line
+        else:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    lines.append(' '.join(current_line))
+
+    text_surfaces = [font.render(line, True, (255, 255, 255)) for line in lines]
+    total_height = sum(surface.get_height() for surface in text_surfaces)
+    start_y = (screen.get_height() - total_height) // 2
+
+    text_rects = [surface.get_rect(center=(screen_width // 2, start_y + i * surface.get_height())) for i, surface in enumerate(text_surfaces)]
+
+    return text_surfaces, text_rects
+
 def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
     """Apply a simplified blur effect to the screen, draw a subtle transparent blue ring, and overlay text."""
+    
+    # Create a semi-transparent surface for the blur effect
     blur_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-    blur_surface.fill((0, 0, 0, 128))
+    blur_surface.fill((0, 0, 0, 128))  # Fill with semi-transparent black (adjust alpha for blur intensity)
 
+    # Draw the blurred screen back onto the main screen
     screen.blit(blur_surface, (0, 0))
 
+    # Create a transparent surface for the gradient ring effect
     ring_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+
+    # Define the gradient effect
     center = (screen.get_width() // 2, screen.get_height() // 2)
     outer_radius = screen.get_width() // 2
     inner_radius = outer_radius - blue_ring_thickness
 
+    # Draw a gradient ring from outer to inner radius
     for i in range(outer_radius, inner_radius, -1):
         alpha = int(128 * (i - inner_radius) / blue_ring_thickness)
         pygame.draw.circle(ring_surface, (173, 216, 230, alpha), center, i)
 
+    # Overlay the ring surface onto the screen
     screen.blit(ring_surface, (0, 0))
 
+    # Create text surfaces
     font = pygame.font.Font(None, 36)
-    text_surface = font.render(text, True, (255, 255, 255))
-    text_rect = text_surface.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
-    screen.blit(text_surface, text_rect)
+    margin = screen.get_width() // 4
+    text_surfaces, text_rects = create_text_surfaces(text, font, screen.get_width(), margin)
 
+    # Draw the text surfaces on top of the blurred background and ring
+    for text_surface, text_rect in zip(text_surfaces, text_rects):
+        screen.blit(text_surface, text_rect)
+
+    # Update the display to show changes
     pygame.display.update()
 
-
 def run_app(app_index, screen):
+    """Function to run the app based on the app index."""
     try:
         app_module_name = f'apps.app_{app_index}.app_{app_index}'
-        print(f"Attempting to launch: {app_module_name}")
         mod = __import__(app_module_name, fromlist=[''])
-        mod.run(screen)
-    except ImportError as e:
-        print(f"Error: Unable to load app {app_index}. Module not found: {e}")
-    except AttributeError:
-        print(f"Error: App {app_index} does not have a 'run' function.")
+        mod.run(screen)  # Assumes that each app has a run function that takes screen as an argument.
+    except ModuleNotFoundError:
+        print(f"App {app_index} not found.")
     except Exception as e:
-        print(f"Unexpected error while running app {app_index}: {e}")
-
+        print(f"Error while opening app {app_index}: {e}")
 
 def run_home_screen_and_voice_assistant(screen):
     screen_size = screen.get_size()
@@ -138,7 +166,9 @@ def run_home_screen_and_voice_assistant(screen):
                     command = response.split('#')[1]
                     if "open app" in command:
                         try:
-                            app_index = int(command.split()[-1])
+                            # Parse the app index from the command
+                            app_index = int(command.split()[-1])  # Extract the last word and convert to integer
+                            print(f"Opening app {app_index}")
                             run_app(app_index, screen)
                         except ValueError:
                             print("Error: Invalid app index in command.")
@@ -155,17 +185,9 @@ def run_home_screen_and_voice_assistant(screen):
         pygame.display.flip()
         pygame.time.delay(1)
 
-
 if __name__ == '__main__':
     pygame.init()
     screen = pygame.display.set_mode((1080, 1080))
 
-    # Run home screen and voice assistant
-    try:
-        run_home_screen_and_voice_assistant(screen)
-    except KeyboardInterrupt:
-        pygame.quit()
-        sys.exit()
-
-
-
+    # Run the home screen and voice assistant
+    run_home_screen_and_voice_assistant(screen)
