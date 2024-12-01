@@ -58,28 +58,22 @@ def create_circles(screen_size):
 
 def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
     """Apply a simplified blur effect to the screen, draw a subtle transparent blue ring, and overlay text."""
-    # Create a semi-transparent surface for the blur effect
     blur_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
     blur_surface.fill((0, 0, 0, 128))
 
-    # Draw the blurred screen back onto the main screen
     screen.blit(blur_surface, (0, 0))
 
-    # Create a transparent surface for the gradient ring effect
     ring_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
     center = (screen.get_width() // 2, screen.get_height() // 2)
     outer_radius = screen.get_width() // 2
     inner_radius = outer_radius - blue_ring_thickness
 
-    # Draw a gradient ring
     for i in range(outer_radius, inner_radius, -1):
         alpha = int(128 * (i - inner_radius) / blue_ring_thickness)
         pygame.draw.circle(ring_surface, (173, 216, 230, alpha), center, i)
 
-    # Overlay the ring surface onto the screen
     screen.blit(ring_surface, (0, 0))
 
-    # Draw text
     font = pygame.font.Font(None, 36)
     text_surface = font.render(text, True, (255, 255, 255))
     text_rect = text_surface.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
@@ -102,14 +96,33 @@ def run_app(app_index, screen):
         print(f"Unexpected error while running app {app_index}: {e}")
 
 
-def run_voice_assistant(circles, screen, background):
+def run_home_screen_and_voice_assistant(screen):
+    screen_size = screen.get_size()
+    background = pygame.image.load('./resources/background.jpg')
+    background = pygame.transform.scale(background, screen_size)
+    circles = create_circles(screen_size)
+
     recorder = AudioToTextRecorder(spinner=False, model="tiny.en", language="en",
                                    post_speech_silence_duration=0.1, silero_sensitivity=0.4)
     recorder.start()
     hot_words = ["jarvis", "alexa"]
     skip_hot_word_check = False
 
-    while True:
+    running = True
+    query_displayed = False
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for circle in circles:
+                    if circle.is_clicked(event.pos):
+                        app_index = circles.index(circle) + 1
+                        run_app(app_index, screen)
+
+        # Voice assistant logic
         current_text = recorder.text()
         if any(hot_word in current_text.lower() for hot_word in hot_words) or skip_hot_word_check:
             if current_text:
@@ -135,26 +148,6 @@ def run_voice_assistant(circles, screen, background):
                 done = assist.TTS(speech)
                 recorder.start()
 
-
-def run_home_screen(screen):
-    screen_size = screen.get_size()
-    background = pygame.image.load('./resources/background.jpg')
-    background = pygame.transform.scale(background, screen_size)
-    circles = create_circles(screen_size)
-
-    running = True
-
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for circle in circles:
-                    if circle.is_clicked(event.pos):
-                        app_index = circles.index(circle) + 1
-                        run_app(app_index, screen)
-
         # Draw home screen
         screen.blit(background, (0, 0))
         for circle in circles:
@@ -167,12 +160,12 @@ if __name__ == '__main__':
     pygame.init()
     screen = pygame.display.set_mode((1080, 1080))
 
-    # Start voice assistant in the same loop as the home screen
+    # Run home screen and voice assistant
     try:
-        run_home_screen(screen)
-        run_voice_assistant([], screen, None)
+        run_home_screen_and_voice_assistant(screen)
     except KeyboardInterrupt:
         pygame.quit()
         sys.exit()
+
 
 
