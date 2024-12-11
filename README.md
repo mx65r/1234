@@ -164,11 +164,14 @@ def run_home_screen(screen):
                         mod = __import__(app_module_name, fromlist=[''])
                         mod.run(screen)
 
-        # Ensure drawing happens only in the main thread
+        # Ensure that voice assistant is active
         if draw_event.is_set():
             screen.blit(background, (0, 0))  # Draw background first
             for circle in circles:  # Then draw apps (circles)
                 circle.draw(screen)
+
+            # Apply blur effect and text
+            apply_blur_ring_and_text(screen, "I'm listening...", blue_ring_thickness=100)
 
         # Draw the normal screen when idle
         if idle_event.is_set():
