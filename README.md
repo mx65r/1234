@@ -179,6 +179,11 @@ def run_home_screen(screen):
             for circle in circles:  # Then draw apps (circles)
                 circle.draw(screen)
 
+        # Display the assistant's response (after processing)
+        if not idle_event.is_set() and not draw_event.is_set():
+            response_text = assist.ask_question_memory("What is the weather today?")  # Example response text
+            apply_blur_ring_and_text(screen, response_text, blue_ring_thickness=100)
+
         pygame.display.flip()
         pygame.time.delay(1)
 
