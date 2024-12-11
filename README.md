@@ -107,9 +107,6 @@ def run_voice_assistant(circles, draw_event, idle_event):
     hot_words = ["jarvis", "alexa"]
     print("Say something...")
 
-    current_query = ""
-    current_response = ""
-
     while True:
         current_text = recorder.text()
         if any(hot_word in current_text.lower() for hot_word in hot_words):
@@ -122,7 +119,6 @@ def run_voice_assistant(circles, draw_event, idle_event):
 
                 recorder.stop()
                 current_text += " " + time.strftime("%Y-%m-%d %H-%M-%S")
-                current_query = current_text  # Store the current query
                 response = assist.ask_question_memory(current_text)
                 print(response)
                 speech = response.split('#')[0]
@@ -131,20 +127,10 @@ def run_voice_assistant(circles, draw_event, idle_event):
                 if len(response.split('#')) > 1:
                     command = response.split('#')[1]
                     tools.parse_command(command)
-                current_response = response  # Store the assistant's response
                 recorder.start()
 
         if draw_event.is_set():
-            # Show the query and response on the screen
-            screen = pygame.display.get_surface()
-
-            # Draw the blur effect and text for the query
-            apply_blur_ring_and_text(screen, f"Query: {current_query}", blue_ring_thickness=100)
-
-            # Show the response after a short delay
-            pygame.time.delay(2000)  # Wait for 2 seconds to display query
-            apply_blur_ring_and_text(screen, f"Response: {current_response}", blue_ring_thickness=100)
-
+            pygame.time.delay(3000)  # Shorter delay to speed up transition
             draw_event.clear()
             idle_event.set()
 
@@ -184,11 +170,19 @@ def run_home_screen(screen):
             for circle in circles:  # Then draw apps (circles)
                 circle.draw(screen)
 
+            # Apply blur effect and text
+            apply_blur_ring_and_text(screen, "I'm listening...", blue_ring_thickness=100)
+
         # Draw the normal screen when idle
         if idle_event.is_set():
             screen.blit(background, (0, 0))  # Draw background first
             for circle in circles:  # Then draw apps (circles)
                 circle.draw(screen)
+
+        # Display the assistant's response (after processing)
+        if not idle_event.is_set() and not draw_event.is_set():
+            response_text = assist.ask_question_memory("What is the weather today?")  # Example response text
+            apply_blur_ring_and_text(screen, response_text, blue_ring_thickness=100)
 
         pygame.display.flip()
         pygame.time.delay(1)
