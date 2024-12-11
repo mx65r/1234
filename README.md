@@ -1,12 +1,11 @@
 import pygame
 import math
 import sys
-import os
-import assist
 import time
-import tools
-from RealtimeSTT import AudioToTextRecorder
 import threading
+from RealtimeSTT import AudioToTextRecorder
+import assist
+import tools
 
 class AppCircle:
     def __init__(self, center, app_index, screen_size):
@@ -54,39 +53,14 @@ def create_circles(screen_size):
         circles.append(AppCircle((x, y), i + 1, screen_size))
     return circles
 
-def create_text_surfaces(response, font, screen_width, margin):
-    words = response.split()
-    lines = []
-    current_line = []
-    for word in words:
-        test_line = current_line + [word]
-        test_surface = font.render(' '.join(test_line), True, (255, 255, 255))
-        if test_surface.get_width() <= screen_width - 2 * margin:
-            current_line = test_line
-        else:
-            lines.append(' '.join(current_line))
-            current_line = [word]
-    lines.append(' '.join(current_line))
-
-    text_surfaces = [font.render(line, True, (255, 255, 255)) for line in lines]
-    total_height = sum(surface.get_height() for surface in text_surfaces)
-    start_y = (screen.get_height() - total_height) // 2
-
-    text_rects = [surface.get_rect(center=(screen_width // 2, start_y + i * surface.get_height())) for i, surface in enumerate(text_surfaces)]
-
-    return text_surfaces, text_rects
-
 def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
     """Apply a simplified blur effect to the screen, draw a subtle transparent blue ring, and overlay text."""
-    
-    # Create a semi-transparent surface for the blur effect
     blur_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
     blur_surface.fill((0, 0, 0, 128))  # Fill with semi-transparent black (adjust alpha for blur intensity)
 
     # Draw the blurred screen back onto the main screen
     screen.blit(blur_surface, (0, 0))
 
-    # Create a transparent surface for the gradient ring effect
     ring_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
 
     # Define the gradient effect
@@ -99,41 +73,49 @@ def apply_blur_ring_and_text(screen, text, blue_ring_thickness=100):
         alpha = int(128 * (i - inner_radius) / blue_ring_thickness)
         pygame.draw.circle(ring_surface, (173, 216, 230, alpha), center, i)
 
-    # Overlay the ring surface onto the screen
     screen.blit(ring_surface, (0, 0))
 
-    # Create text surfaces
     font = pygame.font.Font(None, 36)
     margin = screen.get_width() // 4
-    text_surfaces, text_rects = create_text_surfaces(text, font, screen.get_width(), margin)
+    words = text.split()
+    lines = []
+    current_line = []
 
-    # Draw the text surfaces on top of the blurred background and ring
+    for word in words:
+        test_line = current_line + [word]
+        test_surface = font.render(' '.join(test_line), True, (255, 255, 255))
+        if test_surface.get_width() <= screen.get_width() - 2 * margin:
+            current_line = test_line
+        else:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    lines.append(' '.join(current_line))
+
+    text_surfaces = [font.render(line, True, (255, 255, 255)) for line in lines]
+    total_height = sum(surface.get_height() for surface in text_surfaces)
+    start_y = (screen.get_height() - total_height) // 2
+
+    text_rects = [surface.get_rect(center=(screen.get_width() // 2, start_y + i * surface.get_height())) for i, surface in enumerate(text_surfaces)]
+
     for text_surface, text_rect in zip(text_surfaces, text_rects):
         screen.blit(text_surface, text_rect)
 
-    # Update the display to show changes
     pygame.display.update()
 
-def run_voice_assistant(circles, screen, background, draw_event, idle_event):
+def run_voice_assistant(circles, draw_event, idle_event):
     recorder = AudioToTextRecorder(spinner=False, model="tiny.en", language="en", post_speech_silence_duration=0.1, silero_sensitivity=0.4)
-    query_displayed = False
-    response_displayed = False
     hot_words = ["jarvis", "alexa"]
-    
     print("Say something...")
-    
+
     while True:
         current_text = recorder.text()
         if any(hot_word in current_text.lower() for hot_word in hot_words):
             if current_text:
                 print("User: " + current_text)
+
                 # Indicate that voice assistant is drawing
                 draw_event.set()
                 idle_event.clear()
-
-                # Start the blur effect and display the query
-                apply_blur_ring_and_text(screen, current_text, blue_ring_thickness=100)
-                query_displayed = True
 
                 recorder.stop()
                 current_text += " " + time.strftime("%Y-%m-%d %H-%M-%S")
@@ -141,47 +123,34 @@ def run_voice_assistant(circles, screen, background, draw_event, idle_event):
                 print(response)
                 speech = response.split('#')[0]
 
-                if query_displayed:
-                    screen.blit(background, (0, 0))  # Draw background first
-                    for circle in circles:  # Then draw apps (circles)
-                        circle.draw(screen)
-                    apply_blur_ring_and_text(screen, response, blue_ring_thickness=100)
-                    query_displayed = False
-                    response_displayed = True
-
                 done = assist.TTS(speech)
                 if len(response.split('#')) > 1:
                     command = response.split('#')[1]
                     tools.parse_command(command)
                 recorder.start()
 
-        if response_displayed:
+        if draw_event.is_set():
             pygame.time.delay(3000)  # Shorter delay to speed up transition
-            response_displayed = False
-            idle_event.set()
             draw_event.clear()
-
-        if not query_displayed and not response_displayed and idle_event.is_set():
-            screen.blit(background, (0, 0))  # Draw background first
-            for circle in circles:  # Then draw apps (circles)
-                circle.draw(screen)
+            idle_event.set()
 
 def run_home_screen(screen):
     screen_size = screen.get_size()
     background = pygame.image.load('./resources/background.jpg')
     background = pygame.transform.scale(background, screen_size)
-    
+
     circles = create_circles(screen_size)
-    
+
     running = True
     draw_event = threading.Event()
     idle_event = threading.Event()
     idle_event.set()  # Initially set the idle event to allow drawing
 
-    voice_thread = threading.Thread(target=run_voice_assistant, args=(circles, screen, background, draw_event, idle_event))
+    # Thread for voice assistant
+    voice_thread = threading.Thread(target=run_voice_assistant, args=(circles, draw_event, idle_event))
     voice_thread.daemon = True
     voice_thread.start()
-    
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -195,6 +164,13 @@ def run_home_screen(screen):
                         mod = __import__(app_module_name, fromlist=[''])
                         mod.run(screen)
 
+        # Ensure drawing happens only in the main thread
+        if draw_event.is_set():
+            screen.blit(background, (0, 0))  # Draw background first
+            for circle in circles:  # Then draw apps (circles)
+                circle.draw(screen)
+
+        # Draw the normal screen when idle
         if idle_event.is_set():
             screen.blit(background, (0, 0))  # Draw background first
             for circle in circles:  # Then draw apps (circles)
